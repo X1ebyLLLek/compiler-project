@@ -1,0 +1,6 @@
+int main() {
+    int a = 42;
+    $invalid_var = 10;
+    @another = a + 5;
+    return a;
+}

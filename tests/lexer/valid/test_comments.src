@@ -1,0 +1,6 @@
+// This is a single line comment
+int x = 5; // trailing comment
+/* This is a 
+   multi-line block
+   comment */
+y = 10;
