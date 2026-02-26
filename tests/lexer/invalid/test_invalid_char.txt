@@ -1,0 +1,27 @@
+﻿1:1 KW_INT "int"
+1:5 IDENTIFIER "main" main
+1:9 LPAREN "("
+1:10 RPAREN ")"
+1:12 LBRACE "{"
+2:5 KW_INT "int"
+2:9 IDENTIFIER "a" a
+2:11 ASSIGN "="
+2:13 INT_LITERAL "42" 42
+2:15 SEMICOLON ";"
+3:5 ERROR "$" ═хфюяєёЄшь√щ ёшьтюы '$'
+3:6 IDENTIFIER "invalid_var" invalid_var
+3:18 ASSIGN "="
+3:20 INT_LITERAL "10" 10
+3:22 SEMICOLON ";"
+4:5 ERROR "@" ═хфюяєёЄшь√щ ёшьтюы '@'
+4:6 IDENTIFIER "another" another
+4:14 ASSIGN "="
+4:16 IDENTIFIER "a" a
+4:18 PLUS "+"
+4:20 INT_LITERAL "5" 5
+4:21 SEMICOLON ";"
+5:5 KW_RETURN "return"
+5:12 IDENTIFIER "a" a
+5:13 SEMICOLON ";"
+6:1 RBRACE "}"
+7:1 END_OF_FILE ""
