@@ -91,11 +91,14 @@ class Token:
 
     def __str__(self) -> str:
         """Формат вывода как запрошено в TEST-3"""
-        base = f'{self.line}:{self.column} {self.type.name} "{self.lexeme}"'
+        safe_lexeme = self.lexeme.replace('\n', '\\n').replace('\r', '\\r')
+        base = f'{self.line}:{self.column} {self.type.name} "{safe_lexeme}"'
         if self.literal_value is not None:
             # Для отладки добавляем значение литерала
             if isinstance(self.literal_value, bool):
                 val_str = str(self.literal_value).lower()
+            elif isinstance(self.literal_value, str):
+                val_str = self.literal_value.replace('\n', '\\n').replace('\r', '\\r')
             else:
                 val_str = str(self.literal_value)
             return f"{base} {val_str}"

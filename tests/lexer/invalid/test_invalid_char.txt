@@ -1,4 +1,4 @@
-﻿1:1 KW_INT "int"
+1:1 KW_INT "int"
 1:5 IDENTIFIER "main" main
 1:9 LPAREN "("
 1:10 RPAREN ")"
@@ -8,12 +8,12 @@
 2:11 ASSIGN "="
 2:13 INT_LITERAL "42" 42
 2:15 SEMICOLON ";"
-3:5 ERROR "$" ═хфюяєёЄшь√щ ёшьтюы '$'
+3:5 ERROR "$" Недопустимый символ '$'
 3:6 IDENTIFIER "invalid_var" invalid_var
 3:18 ASSIGN "="
 3:20 INT_LITERAL "10" 10
 3:22 SEMICOLON ";"
-4:5 ERROR "@" ═хфюяєёЄшь√щ ёшьтюы '@'
+4:5 ERROR "@" Недопустимый символ '@'
 4:6 IDENTIFIER "another" another
 4:14 ASSIGN "="
 4:16 IDENTIFIER "a" a
