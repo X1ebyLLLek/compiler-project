@@ -1,14 +1,14 @@
-﻿1:1 KW_FLOAT "float"
+1:1 KW_FLOAT "float"
 1:7 IDENTIFIER "pi" pi
 1:10 ASSIGN "="
 1:12 FLOAT_LITERAL "3.14" 3.14
-1:16 ERROR "." ═хфюяєёЄшь√щ ёшьтюы '.'
+1:16 ERROR "." Недопустимый символ '.'
 1:17 INT_LITERAL "15" 15
 1:19 SEMICOLON ";"
 2:1 KW_FLOAT "float"
 2:7 IDENTIFIER "invalid" invalid
 2:15 ASSIGN "="
-2:17 ERROR "." ═хфюяєёЄшь√щ ёшьтюы '.'
+2:17 ERROR "." Недопустимый символ '.'
 2:18 INT_LITERAL "5" 5
 2:19 SEMICOLON ";"
 3:1 KW_INT "int"

@@ -1,4 +1,4 @@
-﻿2:1 KW_INT "int"
+2:1 KW_INT "int"
 2:5 IDENTIFIER "x" x
 2:7 ASSIGN "="
 2:9 INT_LITERAL "5" 5
