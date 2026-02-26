@@ -1,0 +1,14 @@
+// Это пример кода для проверки лексера
+fn main() {
+    int counter = 42;
+    float pi = 3.1415;
+    string msg = "Hello, world!";
+    
+    /* 
+      Многострочный
+      комментарий 
+    */
+    if (counter >= 40 && true != false) {
+        counter += 1;
+    }
+}
