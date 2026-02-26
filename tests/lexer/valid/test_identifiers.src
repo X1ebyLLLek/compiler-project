@@ -1,0 +1,3 @@
+int myVar = 10;
+float _hidden = 2.0;
+bool is_valid_123 = true;

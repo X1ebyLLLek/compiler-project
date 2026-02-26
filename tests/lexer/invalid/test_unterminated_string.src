@@ -1,0 +1,5 @@
+fn print_msg() {
+    string msg = "Hello,
+    world";
+    return;
+}
