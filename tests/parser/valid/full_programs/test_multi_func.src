@@ -1,0 +1,15 @@
+// Полная программа: несколько функций и структура
+struct Vector {
+    float x;
+    float y;
+}
+
+fn length(float dx, float dy) -> float {
+    return dx * dx + dy * dy;
+}
+
+fn main() {
+    float a = 3.0;
+    float b = 4.0;
+    float len = length(a, b);
+}

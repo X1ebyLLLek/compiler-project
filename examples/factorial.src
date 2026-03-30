@@ -1,0 +1,11 @@
+fn main() {
+    int counter = 42;
+    float pi = 3.14;
+    bool flag = true;
+
+    if (counter >= 40 && flag) {
+        counter += 1;
+    }
+
+    return counter;
+}

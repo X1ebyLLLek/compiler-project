@@ -1,0 +1,8 @@
+// Тест: return в разных ситуациях
+fn ret_value() -> int {
+    return 42;
+}
+
+fn ret_void() {
+    return;
+}

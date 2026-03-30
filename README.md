@@ -27,15 +27,64 @@ pip install -e .[dev]
 ### Использование лексера (Спринт 1)
 Для вывода потока токенов из исходного файла:
 ```bash
-python -m src.lexer.scanner examples/hello.src
+python -m src.main lex --input examples/hello.src
+```
+
+### Использование парсера (Спринт 2)
+Парсинг файла и вывод AST в текстовом формате:
+```bash
+python -m src.main parse --input examples/hello.src
+```
+
+Генерация Graphviz DOT-файла для визуализации дерева:
+```bash
+python -m src.main parse --input examples/hello.src --ast-format dot --output ast.dot
+# Конвертация в PNG (при наличии Graphviz):
+# dot -Tpng ast.dot -o ast.png
+```
+
+Вывод AST в JSON (для автотестов или анализа):
+```bash
+python -m src.main parse --input examples/hello.src --ast-format json
+```
+
+Подробный режим (печатает также список токенов):
+```bash
+python -m src.main parse --input examples/hello.src --verbose
+```
+
+### Пример AST-вывода (текстовый формат)
+```
+Program [line 1]:
+  FunctionDecl: main -> void [line 2]:
+    Parameters: []
+    Body:
+      Block:
+        VarDecl: int counter =
+          Literal: 42 (int)
+        Return [line 10]:
+          Identifier: counter
 ```
 
 ### Тестирование
 Для запуска всех юнит-тестов (требуется `pytest`):
 ```bash
-pytest tests/
+# Все тесты
+pytest tests/ -v
+
+# Только тесты лексера
+pytest tests/test_runner.py -v
+
+# Только тесты парсера
+pytest tests/parser/test_parser.py -v
 ```
+
+## Формальная грамматика
+Полная спецификация грамматики языка в нотации EBNF доступна в:
+- [docs/grammar.md](docs/grammar.md)
+- [src/parser/grammar.txt](src/parser/grammar.txt)
 
 ## Документация
 Подробная спецификация лексической и синтаксической грамматики находится в папке `docs/`:
 - [Спецификация языка (Спринт 1)](docs/language_spec.md)
+- [Грамматика языка (Спринт 2)](docs/grammar.md)

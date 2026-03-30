@@ -1,0 +1,7 @@
+// Тест: логические выражения
+fn logic() {
+    bool a = true && false;
+    bool b = true || false;
+    bool c = !true;
+    bool d = (1 < 2) && (3 >= 3);
+}

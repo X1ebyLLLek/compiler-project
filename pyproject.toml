@@ -7,7 +7,7 @@ name = "MiniCompiler"
 version = "0.1.0"
 description = "A simple compiler written for educational purposes"
 authors = [
-    {name = "AI Developer", email = "ai@assistant.local"}
+    {name = "Student", email = "student@university.edu"}
 ]
 requires-python = ">=3.9"
 dependencies = []

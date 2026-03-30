@@ -1,0 +1,8 @@
+// Тест: объявление функции с параметрами
+fn add(int a, int b) -> int {
+    return a + b;
+}
+
+fn greet() {
+    int result = add(10, 20);
+}

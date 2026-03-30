@@ -1,0 +1,39 @@
+# Формальная грамматика MiniCompiler (EBNF)
+# Терминалы: токены из лексера (Спринт 1)
+# Стартовый символ: Program
+
+Program        ::= { Declaration }
+Declaration    ::= FunctionDecl | StructDecl | VarDecl
+
+FunctionDecl   ::= "fn" IDENTIFIER "(" [ Parameters ] ")" [ "->" Type ] Block
+StructDecl     ::= "struct" IDENTIFIER "{" { VarDecl } "}"
+VarDecl        ::= Type IDENTIFIER [ "=" Expression ] ";"
+
+Parameters     ::= Parameter { "," Parameter }
+Parameter      ::= Type IDENTIFIER
+
+Statement      ::= Block | IfStmt | WhileStmt | ForStmt | ReturnStmt
+                  | VarDecl | ExprStmt
+
+Block          ::= "{" { Statement } "}"
+IfStmt         ::= "if" "(" Expression ")" Statement [ "else" Statement ]
+WhileStmt      ::= "while" "(" Expression ")" Statement
+ForStmt        ::= "for" "(" [ VarDecl | ExprStmt ] [ Expression ] ";" [ Expression ] ")" Statement
+ReturnStmt     ::= "return" [ Expression ] ";"
+ExprStmt       ::= Expression ";"
+
+Expression     ::= Assignment
+Assignment     ::= LogicalOr { ("=" | "+=" | "-=" | "*=" | "/=") Assignment }
+LogicalOr      ::= LogicalAnd { "||" LogicalAnd }
+LogicalAnd     ::= Equality { "&&" Equality }
+Equality       ::= Relational { ("==" | "!=") Relational }
+Relational     ::= Additive { ("<" | "<=" | ">" | ">=") Additive }
+Additive       ::= Multiplicative { ("+" | "-") Multiplicative }
+Multiplicative ::= Unary { ("*" | "/" | "%") Unary }
+Unary          ::= ("-" | "!") Unary | Primary
+Primary        ::= INT_LITERAL | FLOAT_LITERAL | STRING_LITERAL | BOOL_LITERAL
+                  | IDENTIFIER [ "(" [ Arguments ] ")" ]
+                  | "(" Expression ")"
+Arguments      ::= Expression { "," Expression }
+
+Type           ::= "int" | "float" | "bool" | "void" | IDENTIFIER

@@ -1,0 +1,6 @@
+// Тест: унарные операторы
+fn unary_ops() {
+    int a = -5;
+    bool b = !true;
+    int c = -(-10);
+}

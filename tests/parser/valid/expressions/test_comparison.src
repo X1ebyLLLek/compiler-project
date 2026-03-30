@@ -1,0 +1,9 @@
+// Тест: сравнения и равенство
+fn compare() {
+    bool a = 1 == 1;
+    bool b = 2 != 3;
+    bool c = 4 < 5;
+    bool d = 6 <= 6;
+    bool e = 7 > 0;
+    bool f = 8 >= 8;
+}
