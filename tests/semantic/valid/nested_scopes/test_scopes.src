@@ -1,0 +1,30 @@
+// Корректная программа: вложенные области видимости
+fn main() {
+    int x = 1;
+
+    {
+        int y = 2;
+        int z = x + y;
+    }
+
+    {
+        int y = 100;
+        float f = 3.14;
+    }
+
+    if (x > 0) {
+        int inner = x * 2;
+        {
+            int deep = inner + 1;
+        }
+    }
+}
+
+fn scoped(int a) -> int {
+    int result = a;
+    while (result > 0) {
+        int temp = result - 1;
+        result = temp;
+    }
+    return result;
+}

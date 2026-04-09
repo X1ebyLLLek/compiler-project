@@ -1,0 +1,11 @@
+// Ошибка: несовместимые типы
+fn main() {
+    int x = 10;
+    x = "hello";
+
+    bool flag = true;
+    int y = flag + 5;
+
+    float f = 3.14;
+    bool b = f;
+}

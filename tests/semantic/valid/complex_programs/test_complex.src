@@ -1,0 +1,41 @@
+// Корректная программа: forward reference функций, struct, циклы
+struct Point {
+    int x;
+    int y;
+}
+
+fn add(int a, int b) -> int {
+    return a + b;
+}
+
+fn multiply(int a, int b) -> int {
+    int result = 0;
+    for (int i = 0; i < b; i += 1) {
+        result = add(result, a);
+    }
+    return result;
+}
+
+fn factorial(int n) -> int {
+    int result = 1;
+    int i = 1;
+    while (i <= n) {
+        result *= i;
+        i += 1;
+    }
+    return result;
+}
+
+fn main() {
+    int a = 5;
+    int b = 3;
+    int sum = add(a, b);
+    int product = multiply(a, b);
+    int fact = factorial(a);
+
+    bool check = sum == 8;
+
+    if (check) {
+        int x = product + fact;
+    }
+}

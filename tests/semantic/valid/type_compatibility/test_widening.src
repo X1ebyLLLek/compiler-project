@@ -1,0 +1,18 @@
+// Корректная программа: совместимость типов
+// int -> float (widening), арифметика, логика
+
+fn compute(int a, float b) -> float {
+    float result = a + b;
+    return result;
+}
+
+fn main() {
+    int x = 10;
+    float y = 3.14;
+    float z = compute(x, y);
+    bool flag = x > 5;
+
+    if (flag) {
+        z += 1.0;
+    }
+}

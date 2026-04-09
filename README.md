@@ -53,6 +53,33 @@ python -m src.main parse --input examples/hello.src --ast-format json
 python -m src.main parse --input examples/hello.src --verbose
 ```
 
+### Семантический анализ (Спринт 3)
+Проверка корректности типов, объявлений и областей видимости:
+```bash
+python -m src.main check --input examples/factorial.src
+```
+
+Подробный режим с выводом таблицы символов и типовых аннотаций:
+```bash
+python -m src.main check --input examples/factorial.src --verbose --show-types
+```
+
+Вывод результата в файл:
+```bash
+python -m src.main check --input examples/factorial.src --output report.txt
+```
+
+#### Пример вывода ошибок
+```
+semantic error: необъявленная переменная 'z'
+  --> строка 4:15
+   |
+   |     int y = z + x;
+   |               ^
+   |
+   = подсказка: возможно, вы имели в виду 'x'? (объявлено в строке 3)
+```
+
 ### Пример AST-вывода (текстовый формат)
 ```
 Program [line 1]:
@@ -77,6 +104,9 @@ pytest tests/test_runner.py -v
 
 # Только тесты парсера
 pytest tests/parser/test_parser.py -v
+
+# Только тесты семантического анализатора
+pytest tests/semantic/test_semantic.py -v
 ```
 
 ## Формальная грамматика

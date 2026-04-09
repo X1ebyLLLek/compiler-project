@@ -3,19 +3,27 @@
 Поддерживает команды:
   python -m src.main lex   <file>  — вывод потока токенов
   python -m src.main parse <file>  — парсинг и вывод AST
+  python -m src.main check <file>  — семантический анализ (Sprint 3)
 
 Опции для parse:
   --ast-format text|dot|json  (по умолчанию text)
   --output <file>             (по умолчанию stdout)
   --verbose                   (подробный вывод)
+
+Опции для check:
+  --verbose                   (подробный вывод: токены, AST, типы)
+  --show-types                (показать типовые аннотации AST)
+  --output <file>             (файл для вывода)
 """
 
 import argparse
+import json
 import sys
 
 from src.lexer.scanner import Scanner
 from src.parser.parser import Parser
 from src.parser.ast_printer import ASTPrettyPrinter, ASTDotPrinter, ASTJsonPrinter
+from src.semantic.analyzer import SemanticAnalyzer
 
 
 def read_source(path: str) -> str:
@@ -92,6 +100,71 @@ def cmd_parse(args):
         print(result, end="")
 
 
+def cmd_check(args):
+    """Команда семантического анализа (Sprint 3)."""
+    source = read_source(args.input)
+
+    # Лексический анализ
+    scanner = Scanner(source)
+    tokens = scanner._tokens
+
+    if args.verbose:
+        print("=== Токены ===", file=sys.stderr)
+        for tok in tokens:
+            print(f"  {tok}", file=sys.stderr)
+        print("==============\n", file=sys.stderr)
+
+    # Синтаксический анализ
+    parser = Parser(tokens)
+    ast = parser.parse()
+
+    parse_errors = parser.get_errors()
+    if parse_errors:
+        print(f"Обнаружено ошибок парсинга: {len(parse_errors)}", file=sys.stderr)
+        for err in parse_errors:
+            print(f"  {err}", file=sys.stderr)
+        if not args.verbose:
+            print("Невозможно выполнить семантический анализ из-за ошибок парсинга.",
+                  file=sys.stderr)
+            sys.exit(1)
+
+    # Семантический анализ
+    analyzer = SemanticAnalyzer()
+    analyzer.analyze(ast, source=source)
+
+    # Формирование вывода
+    output_parts = []
+
+    if args.show_types or args.verbose:
+        output_parts.append(analyzer.format_decorated_ast(ast))
+        output_parts.append("")
+
+    if args.verbose:
+        sym_table = analyzer.get_symbol_table()
+        output_parts.append(sym_table.dump())
+        output_parts.append("")
+
+    # Ошибки
+    sem_errors = analyzer.get_errors()
+    if sem_errors:
+        output_parts.append(analyzer.format_errors())
+    else:
+        output_parts.append("Семантических ошибок не обнаружено.")
+
+    result = "\n".join(output_parts) + "\n"
+
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as f:
+            f.write(result)
+        print(f"Результат семантического анализа записан в {args.output}")
+    else:
+        print(result, end="")
+
+    # Код возврата
+    if sem_errors:
+        sys.exit(1)
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="MiniCompiler — учебный компилятор"
@@ -112,11 +185,22 @@ def main():
     parse_p.add_argument("--verbose", "-v", action="store_true",
                          help="Подробный вывод (список токенов и т.д.)")
 
+    # --- check (Sprint 3) ---
+    check_p = subparsers.add_parser("check", help="Семантический анализ")
+    check_p.add_argument("--input", "-i", required=True, help="Путь к .src файлу")
+    check_p.add_argument("--output", "-o", default=None, help="Файл для записи результата")
+    check_p.add_argument("--verbose", "-v", action="store_true",
+                         help="Подробный вывод (токены, AST, таблица символов)")
+    check_p.add_argument("--show-types", action="store_true",
+                         help="Показать типовые аннотации AST")
+
     args = ap.parse_args()
     if args.command == "lex":
         cmd_lex(args)
     elif args.command == "parse":
         cmd_parse(args)
+    elif args.command == "check":
+        cmd_check(args)
     else:
         ap.print_help()
         sys.exit(1)

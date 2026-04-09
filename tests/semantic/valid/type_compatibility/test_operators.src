@@ -1,0 +1,32 @@
+// Корректная программа: все арифметические и логические типы
+fn math() -> int {
+    int a = 10;
+    int b = 20;
+    int c = a + b;
+    int d = a - b;
+    int e = a * b;
+    int f = a / b;
+    int g = a % b;
+    return c;
+}
+
+fn logic() -> bool {
+    bool x = true;
+    bool y = false;
+    bool z = x && y;
+    bool w = x || y;
+    bool v = !x;
+    return z;
+}
+
+fn comparison() -> bool {
+    int a = 5;
+    int b = 10;
+    bool r1 = a < b;
+    bool r2 = a <= b;
+    bool r3 = a > b;
+    bool r4 = a >= b;
+    bool r5 = a == b;
+    bool r6 = a != b;
+    return r1;
+}

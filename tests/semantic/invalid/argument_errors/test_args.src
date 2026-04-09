@@ -1,0 +1,10 @@
+// Ошибка: неправильное количество и типы аргументов
+fn add(int a, int b) -> int {
+    return a + b;
+}
+
+fn main() {
+    int r1 = add(1);
+    int r2 = add(1, 2, 3);
+    int r3 = add("hello", true);
+}
