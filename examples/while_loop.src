@@ -1,0 +1,13 @@
+// Пример для тестирования IR: цикл while
+fn count_down(int n) -> int {
+    int result = 0;
+    while (n > 0) {
+        result += n;
+        n -= 1;
+    }
+    return result;
+}
+
+fn main() -> int {
+    return count_down(5);
+}

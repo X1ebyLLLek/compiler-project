@@ -1,0 +1,17 @@
+// Пример: рекурсивная функция факториала и вспомогательная функция
+// Используется для тестирования IR-генерации (Sprint 4)
+
+fn factorial(int n) -> int {
+    if (n <= 1) {
+        return 1;
+    } else {
+        int prev = factorial(n - 1);
+        return n * prev;
+    }
+}
+
+fn main() -> int {
+    int result = factorial(5);
+    int x = result + 10;
+    return x;
+}
