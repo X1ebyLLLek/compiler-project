@@ -1,0 +1,13 @@
+// Тест: условный оператор if-else
+fn max(int a, int b) -> int {
+    if (a > b) {
+        return a;
+    } else {
+        return b;
+    }
+}
+
+fn main() -> int {
+    int result = max(10, 7);
+    return result;
+}

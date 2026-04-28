@@ -1,0 +1,15 @@
+// Тест: все арифметические операции
+fn arithmetic(int a, int b) -> int {
+    int s = a + b;
+    int d = a - b;
+    int m = a * b;
+    int q = a / b;
+    int r = a % b;
+    int neg = -a;
+    return s;
+}
+
+fn main() -> int {
+    int result = arithmetic(10, 3);
+    return result;
+}

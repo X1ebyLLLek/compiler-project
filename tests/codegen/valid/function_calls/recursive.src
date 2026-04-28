@@ -1,0 +1,14 @@
+// Тест: рекурсивный вызов функции (факториал)
+fn factorial(int n) -> int {
+    if (n <= 1) {
+        return 1;
+    } else {
+        int prev = factorial(n - 1);
+        return n * prev;
+    }
+}
+
+fn main() -> int {
+    int result = factorial(5);
+    return result;
+}

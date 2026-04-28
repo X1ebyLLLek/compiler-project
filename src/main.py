@@ -1,10 +1,11 @@
 """
-Единая точка входа в компилятор MiniCompiler (VIS-4).
+Единая точка входа в компилятор MiniCompiler.
 Поддерживает команды:
-  python -m src.main lex   <file>  — вывод потока токенов
-  python -m src.main parse <file>  — парсинг и вывод AST
-  python -m src.main check <file>  — семантический анализ (Sprint 3)
-  python -m src.main ir    <file>  — генерация промежуточного представления (Sprint 4)
+  python -m src.main lex     <file>  — вывод потока токенов (Sprint 1)
+  python -m src.main parse   <file>  — парсинг и вывод AST (Sprint 2)
+  python -m src.main check   <file>  — семантический анализ (Sprint 3)
+  python -m src.main ir      <file>  — генерация IR (Sprint 4)
+  python -m src.main compile <file>  — генерация x86-64 ассемблера (Sprint 5)
 
 Опции для parse:
   --ast-format text|dot|json  (по умолчанию text)
@@ -21,10 +22,14 @@
   --output <file>             (файл для записи IR / DOT)
   --stats                     (вывести статистику IR)
   --function <name>           (вывести IR только для одной функции)
+
+Опции для compile:
+  --output <file>             (файл для записи .asm; по умолчанию stdout)
+  --target x86_64             (целевая архитектура; единственная поддерживаемая)
+  --ir-stats                  (дополнительно вывести статистику IR)
 """
 
 import argparse
-import json
 import sys
 
 from src.lexer.scanner import Scanner
@@ -267,6 +272,62 @@ def cmd_ir(args):
         print(result, end="")
 
 
+def cmd_compile(args):
+    """Команда генерации x86-64 ассемблера (Sprint 5)."""
+    source = read_source(args.input)
+
+    # Лексический анализ
+    scanner = Scanner(source)
+    tokens = scanner._tokens
+
+    # Синтаксический анализ
+    parser = Parser(tokens)
+    ast = parser.parse()
+
+    parse_errors = parser.get_errors()
+    if parse_errors:
+        print(f"Ошибки парсинга: {len(parse_errors)}", file=sys.stderr)
+        for err in parse_errors:
+            print(f"  {err}", file=sys.stderr)
+        sys.exit(1)
+
+    # Семантический анализ
+    analyzer = SemanticAnalyzer()
+    analyzer.analyze(ast, source=source)
+
+    sem_errors = analyzer.get_errors()
+    if sem_errors:
+        print(f"Семантические ошибки: {len(sem_errors)}", file=sys.stderr)
+        print(analyzer.format_errors(), file=sys.stderr)
+        sys.exit(1)
+
+    # Генерация IR
+    generator = IRGenerator()
+    ir_program = generator.generate(ast)
+
+    # Вывод статистики IR (опционально)
+    if args.ir_stats:
+        stats = ir_program.stats()
+        print("=== Статистика IR ===")
+        print(f"  Функций:    {stats['functions']}")
+        print(f"  Блоков:     {stats['total_blocks']}")
+        print(f"  Инструкций: {stats['total_instructions']}")
+        print()
+
+    # Генерация x86-64 ассемблера
+    from src.codegen.x86_generator import X86Generator
+    codegen = X86Generator()
+    asm = codegen.generate(ir_program)
+    result = asm + "\n"
+
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as f:
+            f.write(result)
+        print(f"Ассемблер записан в {args.output}")
+    else:
+        print(result, end="")
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="MiniCompiler — учебный компилятор"
@@ -308,6 +369,17 @@ def main():
     ir_p.add_argument("--function", default=None,
                       help="Вывести IR только для указанной функции")
 
+    # --- compile (Sprint 5) ---
+    compile_p = subparsers.add_parser("compile", help="Генерация x86-64 ассемблера (Sprint 5)")
+    compile_p.add_argument("--input", "-i", required=True, help="Путь к .src файлу")
+    compile_p.add_argument("--output", "-o", default=None,
+                           help="Файл для записи .asm (по умолчанию stdout)")
+    compile_p.add_argument("--target", default="x86_64",
+                           choices=["x86_64"],
+                           help="Целевая архитектура (по умолчанию x86_64)")
+    compile_p.add_argument("--ir-stats", action="store_true",
+                           help="Дополнительно вывести статистику IR")
+
     args = ap.parse_args()
     if args.command == "lex":
         cmd_lex(args)
@@ -317,6 +389,8 @@ def main():
         cmd_check(args)
     elif args.command == "ir":
         cmd_ir(args)
+    elif args.command == "compile":
+        cmd_compile(args)
     else:
         ap.print_help()
         sys.exit(1)

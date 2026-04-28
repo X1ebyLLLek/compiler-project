@@ -210,6 +210,140 @@ Program [line 1]:
           Identifier: counter
 ```
 
+### Генерация x86-64 ассемблера (Спринт 5)
+
+Спринт 5 добавляет модуль `src/codegen/` для генерации **x86-64 ассемблерного кода** в синтаксисе NASM, следуя соглашению о вызовах **System V AMD64 ABI**.
+
+#### Соглашение о вызовах (System V AMD64 ABI)
+
+```
+Передача аргументов (целые):  RDI, RSI, RDX, RCX, R8, R9
+Передача аргументов (float):  XMM0–XMM7
+Возврат значения:             RAX (целое), XMM0 (float)
+Caller-saved:                 RAX, RCX, RDX, RSI, RDI, R8–R11
+Callee-saved:                 RBX, RSP, RBP, R12–R15
+Выравнивание стека:           16 байт перед CALL
+```
+
+#### Структура стекового фрейма
+
+```
+Высокие адреса
+┌─────────────────┐
+│  ...            │
+├─────────────────┤
+│ 7-й аргумент   │  [rbp+32]  (если > 6 аргументов)
+├─────────────────┤
+│ адрес возврата  │  [rbp+8]
+├─────────────────┤
+│ сохранённый rbp │  [rbp]   ← rbp указывает сюда
+├─────────────────┤
+│ локальная var 1 │  [rbp-8]
+├─────────────────┤
+│ локальная var 2 │  [rbp-16]
+├─────────────────┤
+│ временная t1    │  [rbp-24]
+└─────────────────┘  ← rsp указывает сюда
+Низкие адреса
+```
+
+#### Команды CLI для генерации ассемблера
+
+Вывести сгенерированный ассемблер в stdout:
+```bash
+python -m src.main compile --input examples/factorial_func.src
+```
+
+Сохранить ассемблер в файл:
+```bash
+python -m src.main compile --input examples/factorial_func.src --output factorial.asm
+```
+
+С выводом статистики IR:
+```bash
+python -m src.main compile --input examples/factorial_func.src --ir-stats --output factorial.asm
+```
+
+#### Пример трансформации: исходный код → ассемблер
+
+```c
+// Исходный код:
+fn add(int a, int b) -> int {
+    int result = a + b;
+    return result;
+}
+```
+
+```nasm
+; Сгенерировано MiniCompiler (Sprint 5)
+; Цель: x86-64 Linux, синтаксис: NASM
+
+section .text
+
+global add
+
+; === Функция: add -> int ===
+add:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 48          ; стековый фрейм
+    mov qword [rbp-8], rdi   ; параметр int a
+    mov qword [rbp-16], rsi  ; параметр int b
+    ; a_0 = ALLOCA
+    ; b_0 = ALLOCA
+    ; result_0 = ALLOCA
+    ; t1 = LOAD [a_0]
+    mov rax, qword [rbp-8]
+    mov qword [rbp-40], rax
+    ; t2 = LOAD [b_0]
+    mov rax, qword [rbp-16]
+    mov qword [rbp-48], rax
+    ; t3 = ADD t1, t2
+    mov rax, qword [rbp-40]
+    mov rcx, qword [rbp-48]
+    add rax, rcx
+    mov qword [rbp-56], rax
+    ; STORE [result_0], t3
+    mov rax, qword [rbp-56]
+    mov qword [rbp-24], rax
+    ; t4 = LOAD [result_0]
+    mov rax, qword [rbp-24]
+    mov qword [rbp-64], rax
+    ; RETURN t4
+    mov rax, qword [rbp-64]
+    mov rsp, rbp
+    pop rbp
+    ret
+```
+
+#### Сборка и запуск (Linux / WSL)
+
+```bash
+# 1. Компилируем исходник в ассемблер
+python -m src.main compile --input examples/factorial_func.src --output factorial.asm
+
+# 2. Ассемблируем с NASM (ELF64)
+nasm -f elf64 -o factorial.o factorial.asm
+nasm -f elf64 -o runtime.o src/runtime/runtime.asm
+
+# 3. Линкуем
+ld -o factorial runtime.o factorial.o
+
+# 4. Запускаем и проверяем код возврата
+./factorial
+echo $?   # Должно вывести возвращаемое значение main()
+```
+
+#### Минимальная runtime-библиотека (`src/runtime/runtime.asm`)
+
+| Функция       | Аргументы       | Описание                                 |
+|:--------------|:----------------|:-----------------------------------------|
+| `_start`      | —               | Точка входа процесса, вызывает `main`    |
+| `exit`        | rdi = код       | Завершает процесс (syscall `exit`)       |
+| `print_int`   | rdi = число     | Выводит целое + `\n` в stdout            |
+| `print_string`| rdi = указатель | Выводит null-terminated строку в stdout  |
+| `read_int`    | —               | Читает целое из stdin → rax              |
+
 ### Тестирование
 Для запуска всех юнит-тестов (требуется `pytest`):
 ```bash
@@ -228,11 +362,11 @@ pytest tests/semantic/test_semantic.py -v
 # Тесты IR-генерации (Sprint 4)
 pytest tests/ir/ -v
 
-# Только тесты генерации IR (выражения, управление, функции)
-pytest tests/ir/generation/ -v
+# Тесты генерации x86-64 ассемблера (Sprint 5)
+pytest tests/codegen/ -v
 
-# Только структурные тесты валидации IR
-pytest tests/ir/validation/ -v
+# Все тесты с кратким отчётом
+pytest tests/ -q
 ```
 
 ## Формальная грамматика
@@ -254,27 +388,38 @@ compiler-project/
 │   ├── parser/         # Спринт 2: синтаксический анализ + AST
 │   ├── semantic/       # Спринт 3: семантический анализ
 │   ├── ir/             # Спринт 4: генерация промежуточного представления
-│   │   ├── ir_instructions.py  # набор IR-инструкций (опкоды, операнды)
-│   │   ├── basic_block.py      # базовые блоки кода
-│   │   ├── control_flow.py     # граф потока управления (CFG), IRFunction, IRProgram
-│   │   └── ir_generator.py     # генератор IR из AST (паттерн Visitor)
+│   │   ├── ir_instructions.py  # IR-инструкции (опкоды, операнды)
+│   │   ├── basic_block.py      # базовые блоки
+│   │   ├── control_flow.py     # граф потока управления (CFG)
+│   │   └── ir_generator.py     # генератор IR из AST
+│   ├── codegen/        # Спринт 5: генерация x86-64 ассемблера
+│   │   ├── abi.py              # константы System V AMD64 ABI
+│   │   ├── stack_frame.py      # управление стековым фреймом
+│   │   ├── register_allocator.py  # распределение регистров (stack-based)
+│   │   └── x86_generator.py   # генератор NASM-кода из IR
+│   ├── runtime/        # Спринт 5: runtime-библиотека
+│   │   └── runtime.asm         # _start, exit, print_int, print_string, read_int
 │   ├── utils/
 │   └── main.py         # единая точка входа CLI
 ├── tests/
 │   ├── lexer/
 │   ├── parser/
 │   ├── semantic/
-│   └── ir/             # тесты Sprint 4
-│       ├── generation/
-│       │   ├── test_expressions.py   # выражения
-│       │   ├── test_control_flow.py  # if/while/for/return
-│       │   └── test_functions.py     # функции + интеграция
-│       └── validation/
-│           └── test_structural.py    # структурные свойства IR
+│   ├── ir/             # тесты Sprint 4
+│   │   ├── generation/
+│   │   └── validation/
+│   └── codegen/        # тесты Sprint 5
+│       ├── valid/
+│       │   ├── arithmetic_ops/   # арифметика
+│       │   ├── control_flow/     # if, while
+│       │   ├── function_calls/   # вызовы, рекурсия
+│       │   ├── io_operations/    # ввод-вывод
+│       │   └── integration/      # комплексные программы
+│       └── test_codegen.py       # pytest-тесты кодогенерации
 ├── examples/
 │   ├── hello.src
 │   ├── factorial.src
-│   ├── factorial_func.src  # рекурсивная функция (Sprint 4)
-│   └── while_loop.src      # пример с циклом (Sprint 4)
+│   ├── factorial_func.src
+│   └── while_loop.src
 └── docs/
 ```

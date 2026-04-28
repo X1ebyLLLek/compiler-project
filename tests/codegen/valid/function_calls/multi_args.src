@@ -1,0 +1,15 @@
+// Тест: функция с несколькими аргументами
+fn clamp(int val, int lo, int hi) -> int {
+    if (val < lo) {
+        return lo;
+    }
+    if (val > hi) {
+        return hi;
+    }
+    return val;
+}
+
+fn main() -> int {
+    int result = clamp(15, 0, 10);
+    return result;
+}

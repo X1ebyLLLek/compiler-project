@@ -1,0 +1,14 @@
+// Тест: полная программа (числа Фибоначчи)
+fn fib(int n) -> int {
+    if (n <= 1) {
+        return n;
+    }
+    int a = fib(n - 1);
+    int b = fib(n - 2);
+    return a + b;
+}
+
+fn main() -> int {
+    int result = fib(10);
+    return result;
+}

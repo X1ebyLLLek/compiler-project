@@ -1,0 +1,10 @@
+// Тест: простое сложение двух целых чисел
+fn add(int a, int b) -> int {
+    int result = a + b;
+    return result;
+}
+
+fn main() -> int {
+    int x = add(3, 5);
+    return x;
+}
