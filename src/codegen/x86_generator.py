@@ -1,5 +1,5 @@
 """
-Генератор x86-64 ассемблера для MiniCompiler (Sprint 5).
+Генератор x86-64 ассемблера для MiniCompiler (Sprint 6).
 
 Транслирует IR-программу в ассемблерный код формата NASM,
 следуя соглашению о вызовах System V AMD64 ABI.
@@ -12,6 +12,13 @@
   - Scratch-регистры rax/rcx/rdx используются для вычислений.
   - Аргументы передаются в rdi, rsi, rdx, rcx, r8, r9 (System V ABI).
   - Возврат значения — в rax.
+
+Новое в Sprint 6:
+  - Используются миксины ControlFlowGeneratorMixin и ExpressionGeneratorMixin.
+  - LabelManager отвечает за генерацию уникальных меток.
+  - Управляющие конструкции (if/else, while, for) корректно транслируются
+    в условные переходы x86-64 (jnz, jz, jmp + метки).
+  - Короткое замыкание && и || реализовано на уровне IR (ir_generator.py).
 """
 
 from __future__ import annotations
@@ -26,10 +33,13 @@ from src.ir.ir_instructions import (
 )
 from .stack_frame import StackFrame
 from .register_allocator import RegisterAllocator
+from .label_manager import LabelManager
+from .control_flow_generator import ControlFlowGeneratorMixin
+from .expression_generator import ExpressionGeneratorMixin
 from . import abi
 
 
-class X86Generator:
+class X86Generator(ControlFlowGeneratorMixin, ExpressionGeneratorMixin):
     """
     Генератор x86-64 ассемблера (NASM синтаксис).
 
@@ -48,6 +58,8 @@ class X86Generator:
         # Строковые литералы: значение → метка в .rodata
         self._string_literals: Dict[str, str] = {}
         self._str_counter: int = 0
+        # Менеджер меток (Sprint 6): уникальные имена для управляющих конструкций
+        self._labels: LabelManager = LabelManager()
 
     # ----------------------------------------------------------------
     # Публичный интерфейс
@@ -64,7 +76,7 @@ class X86Generator:
         self._string_literals = {}
         self._str_counter = 0
 
-        self._emit("; Сгенерировано MiniCompiler (Sprint 5)")
+        self._emit("; Сгенерировано MiniCompiler (Sprint 6)")
         self._emit("; Цель: x86-64 Linux, синтаксис: NASM")
         self._emit("; Соглашение: System V AMD64 ABI")
         self._emit("")
@@ -253,105 +265,40 @@ class X86Generator:
         self._store_from_reg("rax", instr.dest)
 
     def _gen_binary(self, instr: IRInstruction, mnemonic: str) -> None:
-        """ADD / SUB: dest = src1 OP src2."""
-        self._load_to_reg(instr.src1, "rax")
-        self._load_to_reg(instr.src2, "rcx")
-        self._emit(f"    {mnemonic} rax, rcx")
-        self._store_from_reg("rax", instr.dest)
+        """ADD / SUB: dest = src1 OP src2. Делегирует к ExpressionGeneratorMixin."""
+        self._gen_binary_expr(instr, mnemonic)
 
     def _gen_mul(self, instr: IRInstruction) -> None:
-        """MUL dest, src1, src2 — знаковое умножение."""
-        self._load_to_reg(instr.src1, "rax")
-        self._load_to_reg(instr.src2, "rcx")
-        self._emit("    imul rax, rcx")
-        self._store_from_reg("rax", instr.dest)
+        """MUL: знаковое умножение. Делегирует к ExpressionGeneratorMixin."""
+        self._gen_mul_expr(instr)
 
     def _gen_divmod(self, instr: IRInstruction, remainder: bool) -> None:
-        """DIV / MOD: знаковое деление через idiv; rdx = остаток, rax = частное."""
-        self._load_to_reg(instr.src1, "rax")
-        self._load_to_reg(instr.src2, "rcx")
-        self._emit("    cqo")        # знаковое расширение rax → rdx:rax
-        self._emit("    idiv rcx")   # rax = частное, rdx = остаток
-        result_reg = "rdx" if remainder else "rax"
-        self._store_from_reg(result_reg, instr.dest)
+        """DIV / MOD через idiv. Делегирует к ExpressionGeneratorMixin."""
+        self._gen_divmod_expr(instr, remainder)
 
     def _gen_neg(self, instr: IRInstruction) -> None:
-        """NEG dest, src — арифметическое отрицание."""
-        self._load_to_reg(instr.src1, "rax")
-        self._emit("    neg rax")
-        self._store_from_reg("rax", instr.dest)
+        """NEG: арифметическое отрицание. Делегирует к ExpressionGeneratorMixin."""
+        self._gen_neg_expr(instr)
 
     def _gen_not(self, instr: IRInstruction) -> None:
-        """NOT dest, src — логическое отрицание: dest = (src == 0) ? 1 : 0."""
-        self._load_to_reg(instr.src1, "rax")
-        self._emit("    test rax, rax")
-        self._emit("    setz al")
-        self._emit("    movzx rax, al")
-        self._store_from_reg("rax", instr.dest)
+        """NOT: логическое отрицание. Делегирует к ExpressionGeneratorMixin."""
+        self._gen_not_expr(instr)
 
     def _gen_logical_and(self, instr: IRInstruction) -> None:
-        """AND dest, src1, src2 — логическое И: оба ненулевых → 1."""
-        self._load_to_reg(instr.src1, "rax")
-        self._emit("    test rax, rax")
-        self._emit("    setnz al")
-        self._emit("    movzx rax, al")
-        self._load_to_reg(instr.src2, "rcx")
-        self._emit("    test rcx, rcx")
-        self._emit("    setnz cl")
-        self._emit("    movzx rcx, cl")
-        self._emit("    and rax, rcx")
-        self._store_from_reg("rax", instr.dest)
+        """AND: побитовое И для булевых (без КЗ). Делегирует к ExpressionGeneratorMixin."""
+        self._gen_and_expr(instr)
 
     def _gen_logical_or(self, instr: IRInstruction) -> None:
-        """OR dest, src1, src2 — логическое ИЛИ: хотя бы один ненулевой → 1."""
-        self._load_to_reg(instr.src1, "rax")
-        self._emit("    test rax, rax")
-        self._emit("    setnz al")
-        self._emit("    movzx rax, al")
-        self._load_to_reg(instr.src2, "rcx")
-        self._emit("    test rcx, rcx")
-        self._emit("    setnz cl")
-        self._emit("    movzx rcx, cl")
-        self._emit("    or rax, rcx")
-        self._store_from_reg("rax", instr.dest)
+        """OR: побитовое ИЛИ для булевых (без КЗ). Делегирует к ExpressionGeneratorMixin."""
+        self._gen_or_expr(instr)
 
     def _gen_xor(self, instr: IRInstruction) -> None:
-        """XOR dest, src1, src2 — побитовое исключающее ИЛИ."""
-        self._load_to_reg(instr.src1, "rax")
-        self._load_to_reg(instr.src2, "rcx")
-        self._emit("    xor rax, rcx")
-        self._store_from_reg("rax", instr.dest)
+        """XOR: побитовое исключающее ИЛИ. Делегирует к ExpressionGeneratorMixin."""
+        self._gen_xor_expr(instr)
 
     def _gen_cmp(self, instr: IRInstruction) -> None:
-        """CMP_* — сравнение; результат 0 или 1 сохраняется в dest."""
-        _SET_MNEMONICS = {
-            IROpcode.CMP_EQ: "sete",
-            IROpcode.CMP_NE: "setne",
-            IROpcode.CMP_LT: "setl",
-            IROpcode.CMP_LE: "setle",
-            IROpcode.CMP_GT: "setg",
-            IROpcode.CMP_GE: "setge",
-        }
-        self._load_to_reg(instr.src1, "rax")
-        self._load_to_reg(instr.src2, "rcx")
-        self._emit("    cmp rax, rcx")
-        set_mnemonic = _SET_MNEMONICS[instr.opcode]
-        self._emit(f"    {set_mnemonic} al")
-        self._emit("    movzx rax, al")
-        self._store_from_reg("rax", instr.dest)
-
-    def _gen_jump(self, instr: IRInstruction) -> None:
-        """JUMP label — безусловный переход."""
-        label = self._label_ref(str(instr.src1))
-        self._emit(f"    jmp {label}")
-
-    def _gen_jump_cond(self, instr: IRInstruction, negate: bool) -> None:
-        """JUMP_IF / JUMP_IF_NOT cond, label — условный переход."""
-        self._load_to_reg(instr.src1, "rax")
-        self._emit("    test rax, rax")
-        label = self._label_ref(str(instr.src2))
-        mnemonic = "jz" if negate else "jnz"
-        self._emit(f"    {mnemonic} {label}")
+        """CMP_*: сравнение → 0 или 1. Делегирует к ExpressionGeneratorMixin."""
+        self._gen_cmp_expr(instr)
 
     def _gen_call(self, instr: IRInstruction) -> None:
         """CALL dest, func, args — вызов функции по ABI."""

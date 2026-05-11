@@ -336,6 +336,147 @@ echo $?   # Должно вывести возвращаемое значени�
 
 #### Минимальная runtime-библиотека (`src/runtime/runtime.asm`)
 
+### Управляющие конструкции и логика (Спринт 6)
+
+Спринт 6 расширяет кодогенератор поддержкой **управляющих конструкций** (`if/else`, `while`, `for`),
+**короткого замыкания** для `&&` и `||`, и переводит кодогенератор на **миксин-архитектуру**.
+
+#### Архитектура кодогенератора
+
+```
+src/codegen/
+├── label_manager.py         # генерация уникальных меток (LabelManager)
+├── control_flow_generator.py # миксин: if/else, while, for, ветвления
+├── expression_generator.py  # миксин: арифметика, сравнения, логика
+└── x86_generator.py         # главный генератор: наследует оба миксина
+```
+
+`X86Generator` использует множественное наследование:
+```python
+class X86Generator(ControlFlowGeneratorMixin, ExpressionGeneratorMixin):
+    ...
+```
+
+#### Генерация меток
+
+`LabelManager` выдаёт уникальные метки для каждой конструкции:
+
+| Конструкция   | Метки                                          |
+|:--------------|:-----------------------------------------------|
+| `if`          | `L_then_N`, `L_else_N`, `L_endif_N`            |
+| `while`       | `L_while_cond_N`, `L_while_body_N`, `L_while_end_N` |
+| `for`         | `L_for_cond_N`, `L_for_body_N`, `L_for_end_N`  |
+| `&&` (SC)     | `L_sc_false_N`, `L_sc_end_N`                   |
+| `\|\|` (SC)   | `L_sc_true_N`, `L_sc_end_N`                    |
+
+#### Короткое замыкание (`&&` и `||`)
+
+Операторы `&&` и `||` реализованы через IR-уровневые переходы — правый операнд **не вычисляется**, если результат уже известен.
+
+**Схема `&&` (AND с коротким замыканием):**
+```
+    ; вычислить left → t1
+    mov rax, [left]
+    test rax, rax
+    jz  L_sc_false_1     ; left == 0 → сразу false
+    ; вычислить right → t2
+    mov rax, [right]
+    test rax, rax
+    jz  L_sc_false_1     ; right == 0 → false
+    mov [result], 1
+    jmp L_sc_end_1
+L_sc_false_1:
+    mov [result], 0
+L_sc_end_1:
+    mov rax, [result]
+```
+
+**Схема `||` (OR с коротким замыканием):**
+```
+    ; вычислить left → t1
+    mov rax, [left]
+    test rax, rax
+    jnz L_sc_true_1      ; left != 0 → сразу true
+    ; вычислить right → t2
+    mov rax, [right]
+    test rax, rax
+    jnz L_sc_true_1      ; right != 0 → true
+    mov [result], 0
+    jmp L_sc_end_1
+L_sc_true_1:
+    mov [result], 1
+L_sc_end_1:
+    mov rax, [result]
+```
+
+#### Пример: if/else с &&
+
+```c
+// Исходный код:
+fn check(int a, int b) -> int {
+    if (a > 0 && b > 0) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+```
+
+```nasm
+; Сгенерировано MiniCompiler (Sprint 6)
+check:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 96
+    ; ... параметры a, b ...
+    ; && короткое замыкание:
+    mov rax, qword [rbp-8]   ; a
+    mov rcx, 0
+    cmp rax, rcx
+    setg al
+    movzx rax, al
+    test rax, rax
+    jz  L_sc_false_1         ; a <= 0 → пропустить правый операнд
+    mov rax, qword [rbp-16]  ; b
+    mov rcx, 0
+    cmp rax, rcx
+    setg al
+    movzx rax, al
+    test rax, rax
+    jz  L_sc_false_1
+    mov qword [rbp-32], 1
+    jmp L_sc_end_1
+L_sc_false_1:
+    mov qword [rbp-32], 0
+L_sc_end_1:
+    ; if
+    mov rax, qword [rbp-32]
+    test rax, rax
+    jz  L_else_2
+L_then_2:
+    mov rax, 1
+    mov rsp, rbp
+    pop rbp
+    ret
+    jmp L_endif_2
+L_else_2:
+    mov rax, 0
+    mov rsp, rbp
+    pop rbp
+    ret
+L_endif_2:
+```
+
+#### Тесты Sprint 6
+
+```bash
+# Тесты управляющих конструкций
+pytest tests/control_flow/ -v
+
+# Все тесты включая Sprint 5
+pytest tests/codegen/ tests/control_flow/ -v
+```
+
 | Функция       | Аргументы       | Описание                                 |
 |:--------------|:----------------|:-----------------------------------------|
 | `_start`      | —               | Точка входа процесса, вызывает `main`    |
@@ -365,6 +506,9 @@ pytest tests/ir/ -v
 # Тесты генерации x86-64 ассемблера (Sprint 5)
 pytest tests/codegen/ -v
 
+# Тесты управляющих конструкций (Sprint 6)
+pytest tests/control_flow/ -v
+
 # Все тесты с кратким отчётом
 pytest tests/ -q
 ```
@@ -392,10 +536,13 @@ compiler-project/
 │   │   ├── basic_block.py      # базовые блоки
 │   │   ├── control_flow.py     # граф потока управления (CFG)
 │   │   └── ir_generator.py     # генератор IR из AST
-│   ├── codegen/        # Спринт 5: генерация x86-64 ассемблера
+│   ├── codegen/        # Спринт 5-6: генерация x86-64 ассемблера
 │   │   ├── abi.py              # константы System V AMD64 ABI
 │   │   ├── stack_frame.py      # управление стековым фреймом
 │   │   ├── register_allocator.py  # распределение регистров (stack-based)
+│   │   ├── label_manager.py    # Sprint 6: генератор уникальных меток
+│   │   ├── control_flow_generator.py  # Sprint 6: миксин управляющих конструкций
+│   │   ├── expression_generator.py    # Sprint 6: миксин выражений
 │   │   └── x86_generator.py   # генератор NASM-кода из IR
 │   ├── runtime/        # Спринт 5: runtime-библиотека
 │   │   └── runtime.asm         # _start, exit, print_int, print_string, read_int
@@ -408,14 +555,16 @@ compiler-project/
 │   ├── ir/             # тесты Sprint 4
 │   │   ├── generation/
 │   │   └── validation/
-│   └── codegen/        # тесты Sprint 5
-│       ├── valid/
-│       │   ├── arithmetic_ops/   # арифметика
-│       │   ├── control_flow/     # if, while
-│       │   ├── function_calls/   # вызовы, рекурсия
-│       │   ├── io_operations/    # ввод-вывод
-│       │   └── integration/      # комплексные программы
-│       └── test_codegen.py       # pytest-тесты кодогенерации
+│   ├── codegen/        # тесты Sprint 5
+│   │   ├── valid/
+│   │   │   ├── arithmetic_ops/   # арифметика
+│   │   │   ├── control_flow/     # if, while
+│   │   │   ├── function_calls/   # вызовы, рекурсия
+│   │   │   ├── io_operations/    # ввод-вывод
+│   │   │   └── integration/      # комплексные программы
+│   │   └── test_codegen.py       # pytest-тесты кодогенерации
+│   └── control_flow/   # тесты Sprint 6
+│       └── test_control_flow.py  # if/else, while, for, &&, ||
 ├── examples/
 │   ├── hello.src
 │   ├── factorial.src

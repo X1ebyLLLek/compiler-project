@@ -513,14 +513,21 @@ class IRGenerator(ASTVisitor):
     def visit_binary_expr(self, node: BinaryExprNode) -> IROperand:
         """
         Бинарное выражение → трёхадресная инструкция.
-        dest = SRC1 OP SRC2
+
+        Операторы && и || используют короткое замыкание:
+        правый операнд вычисляется только при необходимости.
         """
+        # Короткое замыкание: && и || обрабатываются отдельно
+        if node.operator == "&&":
+            return self._gen_short_circuit_and(node.left, node.right)
+        if node.operator == "||":
+            return self._gen_short_circuit_or(node.left, node.right)
+
         left_op = self._gen_expr(node.left)
         right_op = self._gen_expr(node.right)
 
         opcode = BINARY_OP_TO_OPCODE.get(node.operator)
         if opcode is None:
-            # Неизвестный оператор — используем MOVE как заглушку
             opcode = IROpcode.MOVE
 
         dest = self._new_temp()
@@ -530,6 +537,195 @@ class IRGenerator(ASTVisitor):
             src1=left_op,
             src2=right_op,
             comment=f"{node.operator}",
+        ))
+        return dest
+
+    # ----------------------------------------------------------------
+    # Короткое замыкание для && и ||
+    # ----------------------------------------------------------------
+
+    def _gen_short_circuit_and(self, left_node, right_node) -> IROperand:
+        """
+        Генерация && с коротким замыканием.
+
+        Схема:
+            [вычислить левый]
+            JUMP_IF_NOT left, L_sc_false_N    ; если ложь — пропустить правый
+            [вычислить правый]
+            JUMP_IF_NOT right, L_sc_false_N
+            STORE result, 1
+            JUMP L_sc_end_N
+
+          L_sc_false_N:
+            STORE result, 0
+
+          L_sc_end_N:
+            dest = LOAD result
+        """
+        sc_id = self._label_counter + 1  # уникальный идентификатор этой пары меток
+        false_label = self._new_label("L_sc_false")
+        end_label   = self._new_label("L_sc_end")
+
+        # Временная переменная для хранения булевого результата
+        result_var = VarOperand(f"__sc_and_{sc_id}", 0)
+        self._emit(IRInstruction(
+            opcode=IROpcode.ALLOCA,
+            dest=result_var,
+            comment="&&: выделить место под результат",
+        ))
+
+        # Вычислить левый операнд
+        left_op = self._gen_expr(left_node)
+
+        # Если левый ложь → перейти к false-блоку (правый не вычисляется)
+        self._emit(IRInstruction(
+            opcode=IROpcode.JUMP_IF_NOT,
+            src1=left_op,
+            src2=LabelOperand(false_label),
+            comment="&&: короткое замыкание, левый ложь",
+        ))
+
+        # Вычислить правый операнд (достигается только если левый истина)
+        right_op = self._gen_expr(right_node)
+
+        # Если правый ложь → перейти к false-блоку
+        self._emit(IRInstruction(
+            opcode=IROpcode.JUMP_IF_NOT,
+            src1=right_op,
+            src2=LabelOperand(false_label),
+            comment="&&: короткое замыкание, правый ложь",
+        ))
+
+        # Оба истина: результат = 1
+        self._emit(IRInstruction(
+            opcode=IROpcode.STORE,
+            dest=result_var,
+            src1=LiteralOperand(1),
+            comment="&&: оба истина, результат = 1",
+        ))
+        self._emit(IRInstruction(
+            opcode=IROpcode.JUMP,
+            src1=LabelOperand(end_label),
+        ))
+
+        # --- Блок «ложь» ---
+        false_block = self._new_block(false_label)
+        self._current_block.add_successor(false_block)
+        self._switch_block(false_block)
+        self._emit(IRInstruction(
+            opcode=IROpcode.STORE,
+            dest=result_var,
+            src1=LiteralOperand(0),
+            comment="&&: один из операндов ложь, результат = 0",
+        ))
+        self._emit(IRInstruction(
+            opcode=IROpcode.JUMP,
+            src1=LabelOperand(end_label),
+        ))
+
+        # --- Блок «конец» ---
+        end_block = self._new_block(end_label)
+        false_block.add_successor(end_block)
+        self._switch_block(end_block)
+
+        # Загрузить результат в новую временную
+        dest = self._new_temp()
+        self._emit(IRInstruction(
+            opcode=IROpcode.LOAD,
+            dest=dest,
+            src1=result_var,
+            comment="&&: загрузить итоговый результат",
+        ))
+        return dest
+
+    def _gen_short_circuit_or(self, left_node, right_node) -> IROperand:
+        """
+        Генерация || с коротким замыканием.
+
+        Схема:
+            [вычислить левый]
+            JUMP_IF left, L_sc_true_N    ; если истина — пропустить правый
+            [вычислить правый]
+            JUMP_IF right, L_sc_true_N
+            STORE result, 0
+            JUMP L_sc_end_N
+
+          L_sc_true_N:
+            STORE result, 1
+
+          L_sc_end_N:
+            dest = LOAD result
+        """
+        sc_id = self._label_counter + 1
+        true_label = self._new_label("L_sc_true")
+        end_label  = self._new_label("L_sc_end")
+
+        result_var = VarOperand(f"__sc_or_{sc_id}", 0)
+        self._emit(IRInstruction(
+            opcode=IROpcode.ALLOCA,
+            dest=result_var,
+            comment="||: выделить место под результат",
+        ))
+
+        # Вычислить левый операнд
+        left_op = self._gen_expr(left_node)
+
+        # Если левый истина → перейти к true-блоку (правый не вычисляется)
+        self._emit(IRInstruction(
+            opcode=IROpcode.JUMP_IF,
+            src1=left_op,
+            src2=LabelOperand(true_label),
+            comment="||: короткое замыкание, левый истина",
+        ))
+
+        # Вычислить правый операнд
+        right_op = self._gen_expr(right_node)
+
+        self._emit(IRInstruction(
+            opcode=IROpcode.JUMP_IF,
+            src1=right_op,
+            src2=LabelOperand(true_label),
+            comment="||: короткое замыкание, правый истина",
+        ))
+
+        # Оба ложь: результат = 0
+        self._emit(IRInstruction(
+            opcode=IROpcode.STORE,
+            dest=result_var,
+            src1=LiteralOperand(0),
+            comment="||: оба ложь, результат = 0",
+        ))
+        self._emit(IRInstruction(
+            opcode=IROpcode.JUMP,
+            src1=LabelOperand(end_label),
+        ))
+
+        # --- Блок «истина» ---
+        true_block = self._new_block(true_label)
+        self._current_block.add_successor(true_block)
+        self._switch_block(true_block)
+        self._emit(IRInstruction(
+            opcode=IROpcode.STORE,
+            dest=result_var,
+            src1=LiteralOperand(1),
+            comment="||: хотя бы один истина, результат = 1",
+        ))
+        self._emit(IRInstruction(
+            opcode=IROpcode.JUMP,
+            src1=LabelOperand(end_label),
+        ))
+
+        # --- Блок «конец» ---
+        end_block = self._new_block(end_label)
+        true_block.add_successor(end_block)
+        self._switch_block(end_block)
+
+        dest = self._new_temp()
+        self._emit(IRInstruction(
+            opcode=IROpcode.LOAD,
+            dest=dest,
+            src1=result_var,
+            comment="||: загрузить итоговый результат",
         ))
         return dest
 
