@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from src.ir.control_flow import IRFunction
 from src.ir.ir_instructions import (
-    IROpcode, IROperand, TempOperand, VarOperand,
+    IROpcode, IROperand, TempOperand, VarOperand, LiteralOperand,
 )
 from .stack_frame import StackFrame
 
@@ -40,12 +40,22 @@ class RegisterAllocator:
         frame = StackFrame()
 
         # Два прохода:
-        # 1. Сначала ALLOCA (переменные исходника идут в начало фрейма)
+        # 1. Сначала ALLOCA и ARRAY_ALLOC (переменные исходника идут в начало фрейма)
         for block in func.cfg.blocks:
             for instr in block.instructions:
                 if instr.opcode == IROpcode.ALLOCA and instr.dest:
                     key = self._operand_key(instr.dest)
                     frame.allocate(key)
+                elif instr.opcode == IROpcode.ARRAY_ALLOC and instr.dest:
+                    # Массив: выделяем count * 8 байт подряд
+                    count = 1
+                    if hasattr(instr.src1, 'value') and instr.src1 is not None:
+                        count = int(instr.src1.value)
+                    elem_size = 8
+                    if hasattr(instr.src2, 'value') and instr.src2 is not None:
+                        elem_size = int(instr.src2.value)
+                    key = self._operand_key(instr.dest)
+                    frame.allocate(key, size=count * elem_size)
 
         # 2. Затем все остальные dest (временные)
         for block in func.cfg.blocks:

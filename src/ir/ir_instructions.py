@@ -66,6 +66,12 @@ class IROpcode(Enum):
     # -- PHI-узел (для SSA, если потребуется) --
     PHI = "PHI"  # dest = phi((val1, block1), (val2, block2), ...)
 
+    # -- Операции с массивами (Sprint 7) --
+    ARRAY_ALLOC = "ARRAY_ALLOC"  # выделить место под массив на стеке
+    ARRAY_LOAD  = "ARRAY_LOAD"   # dest = base[index]
+    ARRAY_STORE = "ARRAY_STORE"  # base[index] = src
+    GET_ADDR    = "GET_ADDR"     # dest = &var (адрес переменной/массива)
+
 
 # ============================================================
 # Операнды инструкций
@@ -232,6 +238,19 @@ class IRInstruction:
 
         elif self.opcode == IROpcode.ALLOCA:
             parts.append(f"{self.dest} = ALLOCA")
+
+        elif self.opcode == IROpcode.ARRAY_ALLOC:
+            count = self.src1 if self.src1 is not None else "?"
+            parts.append(f"{self.dest} = ARRAY_ALLOC {count}")
+
+        elif self.opcode == IROpcode.ARRAY_LOAD:
+            parts.append(f"{self.dest} = ARRAY_LOAD [{self.src1}][{self.src2}]")
+
+        elif self.opcode == IROpcode.ARRAY_STORE:
+            parts.append(f"ARRAY_STORE [{self.dest}][{self.src1}], {self.src2}")
+
+        elif self.opcode == IROpcode.GET_ADDR:
+            parts.append(f"{self.dest} = GET_ADDR {self.src1}")
 
         elif self.opcode == IROpcode.MOVE:
             parts.append(f"{self.dest} = MOVE {self.src1}")

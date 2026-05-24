@@ -36,10 +36,17 @@ from .register_allocator import RegisterAllocator
 from .label_manager import LabelManager
 from .control_flow_generator import ControlFlowGeneratorMixin
 from .expression_generator import ExpressionGeneratorMixin
+from .array_generator import ArrayGeneratorMixin
+from .external_calls import ExternalCallsMixin
 from . import abi
 
 
-class X86Generator(ControlFlowGeneratorMixin, ExpressionGeneratorMixin):
+class X86Generator(
+    ControlFlowGeneratorMixin,
+    ExpressionGeneratorMixin,
+    ArrayGeneratorMixin,
+    ExternalCallsMixin,
+):
     """
     Генератор x86-64 ассемблера (NASM синтаксис).
 
@@ -60,6 +67,8 @@ class X86Generator(ControlFlowGeneratorMixin, ExpressionGeneratorMixin):
         self._str_counter: int = 0
         # Менеджер меток (Sprint 6): уникальные имена для управляющих конструкций
         self._labels: LabelManager = LabelManager()
+        # Sprint 7: инициализируем состояние для extern-объявлений
+        self._init_extern_state()
 
     # ----------------------------------------------------------------
     # Публичный интерфейс
@@ -76,10 +85,16 @@ class X86Generator(ControlFlowGeneratorMixin, ExpressionGeneratorMixin):
         self._string_literals = {}
         self._str_counter = 0
 
-        self._emit("; Сгенерировано MiniCompiler (Sprint 6)")
+        self._emit("; Сгенерировано MiniCompiler (Sprint 7)")
         self._emit("; Цель: x86-64 Linux, синтаксис: NASM")
         self._emit("; Соглашение: System V AMD64 ABI")
         self._emit("")
+
+        # Sprint 7: extern-объявления (до секции .text)
+        # Сначала собираем все вызовы внешних функций по всем функциям
+        self._collect_extern_names(ir_program)
+        self._emit_extern_declarations()
+
         self._emit("section .text")
         self._emit("")
 
@@ -237,7 +252,24 @@ class X86Generator(ControlFlowGeneratorMixin, ExpressionGeneratorMixin):
             self._gen_jump_cond(instr, negate=True)
 
         elif op == IROpcode.CALL:
-            self._gen_call(instr)
+            func_name = str(instr.src1)
+            # Sprint 7: внешние функции обрабатываем через ExternalCallsMixin
+            if self._is_known_extern(func_name):
+                self._gen_extern_call(instr)
+            else:
+                self._gen_call(instr)
+
+        elif op == IROpcode.ARRAY_ALLOC:
+            self._gen_array_alloc(instr)
+
+        elif op == IROpcode.ARRAY_LOAD:
+            self._gen_array_load(instr)
+
+        elif op == IROpcode.ARRAY_STORE:
+            self._gen_array_store(instr)
+
+        elif op == IROpcode.GET_ADDR:
+            self._gen_get_addr(instr)
 
         elif op == IROpcode.RETURN:
             self._gen_return(instr)
@@ -427,6 +459,19 @@ class X86Generator(ControlFlowGeneratorMixin, ExpressionGeneratorMixin):
         if current:
             parts.append(f'"{current}"')
         return ", ".join(parts) if parts else '""'
+
+    def _collect_extern_names(self, ir_program) -> None:
+        """
+        Обойти все инструкции программы и зарегистрировать
+        вызовы известных внешних функций для emit extern.
+        """
+        for func in ir_program.functions:
+            for block in func.cfg.blocks:
+                for instr in block.instructions:
+                    if instr.opcode == IROpcode.CALL:
+                        name = str(instr.src1)
+                        if self._is_known_extern(name):
+                            self._register_extern(name)
 
     def _emit(self, line: str) -> None:
         self._lines.append(line)

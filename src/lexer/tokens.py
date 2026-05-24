@@ -17,6 +17,7 @@ class TokenType(Enum):
     KW_VOID = auto()
     KW_STRUCT = auto()
     KW_FN = auto()
+    KW_EXTERN = auto()  # Sprint 7: объявление внешней функции
 
     # Идентификаторы (Identifiers)
     IDENTIFIER = auto()
@@ -78,6 +79,7 @@ KEYWORDS = {
     "void": TokenType.KW_VOID,
     "struct": TokenType.KW_STRUCT,
     "fn": TokenType.KW_FN,
+    "extern": TokenType.KW_EXTERN,  # Sprint 7
 }
 
 @dataclass

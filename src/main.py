@@ -27,6 +27,8 @@
   --output <file>             (файл для записи .asm; по умолчанию stdout)
   --target x86_64             (целевая архитектура; единственная поддерживаемая)
   --ir-stats                  (дополнительно вывести статистику IR)
+  --optimize / -O             (Sprint 7: запустить IR-оптимизатор перед кодогенерацией)
+  --opt-stats                 (Sprint 7: вывести статистику оптимизации)
 """
 
 import argparse
@@ -314,6 +316,43 @@ def cmd_compile(args):
         print(f"  Инструкций: {stats['total_instructions']}")
         print()
 
+    # Sprint 7: IR-оптимизация (если включена флагом --optimize / -O)
+    opt_stats = None
+    if getattr(args, "optimize", False):
+        from src.ir.optimizer import IROptimizer
+        optimizer = IROptimizer()
+        total_before = 0
+        total_after = 0
+        for func in ir_program.functions:
+            # Собираем все инструкции функции из блоков
+            all_instrs = []
+            for block in func.cfg.blocks:
+                all_instrs.extend(block.instructions)
+            total_before += len(all_instrs)
+
+            # Оптимизируем
+            optimized = optimizer.optimize(all_instrs)
+            total_after += len(optimized)
+
+            # Раскладываем оптимизированные инструкции обратно по блокам
+            idx = 0
+            for block in func.cfg.blocks:
+                block_len = len(block.instructions)
+                block.instructions = optimized[idx:idx + block_len]
+                idx += block_len
+
+        opt_stats = optimizer.get_stats()
+
+        if getattr(args, "opt_stats", False):
+            print("=== Статистика оптимизации ===")
+            print(f"  Свёрнуто константных выражений:  {opt_stats['folded']}")
+            print(f"  Подставлено констант:             {opt_stats['propagated']}")
+            print(f"  Удалено мёртвых инструкций:       {opt_stats['eliminated']}")
+            print(f"  Итого оптимизировано:             {opt_stats['total_optimized']}")
+            print(f"  Инструкций до:   {total_before}")
+            print(f"  Инструкций после:{total_after}")
+            print()
+
     # Генерация x86-64 ассемблера
     from src.codegen.x86_generator import X86Generator
     codegen = X86Generator()
@@ -369,8 +408,8 @@ def main():
     ir_p.add_argument("--function", default=None,
                       help="Вывести IR только для указанной функции")
 
-    # --- compile (Sprint 5) ---
-    compile_p = subparsers.add_parser("compile", help="Генерация x86-64 ассемблера (Sprint 5)")
+    # --- compile (Sprint 5 / Sprint 7) ---
+    compile_p = subparsers.add_parser("compile", help="Генерация x86-64 ассемблера")
     compile_p.add_argument("--input", "-i", required=True, help="Путь к .src файлу")
     compile_p.add_argument("--output", "-o", default=None,
                            help="Файл для записи .asm (по умолчанию stdout)")
@@ -379,6 +418,11 @@ def main():
                            help="Целевая архитектура (по умолчанию x86_64)")
     compile_p.add_argument("--ir-stats", action="store_true",
                            help="Дополнительно вывести статистику IR")
+    # Sprint 7: оптимизация
+    compile_p.add_argument("--optimize", "-O", action="store_true",
+                           help="(Sprint 7) Запустить IR-оптимизатор перед кодогенерацией")
+    compile_p.add_argument("--opt-stats", action="store_true",
+                           help="(Sprint 7) Вывести статистику оптимизации")
 
     args = ap.parse_args()
     if args.command == "lex":

@@ -477,6 +477,155 @@ pytest tests/control_flow/ -v
 pytest tests/codegen/ tests/control_flow/ -v
 ```
 
+### Массивы, внешние функции, оптимизации (Спринт 7)
+
+Спринт 7 добавляет поддержку **массивов**, **extern-функций** (printf, malloc и др.)
+и **IR-оптимизатор** с тремя классическими проходами.
+
+#### Массивы
+
+Объявление и использование массивов на стеке:
+
+```c
+fn main() -> int {
+    // Объявление массива из 5 int
+    int arr[5];
+
+    // Объявление с инициализатором
+    int nums[3] = {10, 20, 30};
+
+    // Чтение элемента
+    int x = arr[2];
+
+    // Запись элемента (динамический индекс)
+    int i = 1;
+    arr[i] = 42;
+
+    return nums[0];
+}
+```
+
+Адресный расчёт: `base + index * 8` (все элементы 8-байтные).
+При константном индексе генерируется прямой offset, при переменном — `shl rcx, 3` + `add rax, rcx`.
+
+#### Внешние функции (extern)
+
+Объявление и вызов функций из libc:
+
+```c
+// Объявить printf как внешнюю
+extern fn printf(int) -> int;
+extern fn malloc(int) -> int;
+
+fn main() -> int {
+    // Вызов внешней функции
+    printf("Hello, world!\n");
+
+    // Выделить память
+    int ptr = malloc(64);
+    return 0;
+}
+```
+
+Особенности генерации:
+- `extern printf` появляется в начале ассемблерного файла
+- Для variadic-функций (printf, scanf, ...) добавляется `xor eax, eax` перед `call`
+- Стек выравнивается на 16 байт при наличии стековых аргументов
+
+Известные внешние функции: `printf`, `scanf`, `malloc`, `free`, `memcpy`, `memset`,
+`strlen`, `strcpy`, `strcmp`, `puts`, `getchar`, `exit`, `atoi`, `rand` и др.
+
+Полный список сигнатур — в `src/libc/stdlib.h`.
+
+#### IR-оптимизатор
+
+Три оптимизационных прохода запускаются флагом `--optimize` / `-O`:
+
+**1. Constant Folding** — вычисляет константные выражения на этапе компиляции:
+```
+ADD 3, 4    →    MOVE 7
+MUL 6, 7    →    MOVE 42
+CMP_LT 3, 5 →   MOVE 1
+```
+
+**2. Constant Propagation** — подставляет известные константы вместо переменных:
+```
+MOVE t1, 5
+ADD t2, t1, 3   →   ADD t2, 5, 3
+```
+
+**3. Dead Code Elimination** — убирает недостижимый код и мёртвые присваивания:
+```
+JUMP L_end
+MOVE t1, 99     ← удаляется (недостижимо)
+MOVE t2, 0      ← удаляется (недостижимо)
+L_end:
+```
+
+#### CLI для Sprint 7
+
+Компиляция с оптимизацией:
+```bash
+python -m src.main compile --input demo/quicksort.src --optimize --output out.asm
+```
+
+Компиляция с выводом статистики оптимизации:
+```bash
+python -m src.main compile --input examples/factorial_func.src -O --opt-stats
+```
+
+Пример вывода статистики:
+```
+=== Статистика оптимизации ===
+  Свёрнуто константных выражений:  3
+  Подставлено констант:             5
+  Удалено мёртвых инструкций:       2
+  Итого оптимизировано:             10
+  Инструкций до:   47
+  Инструкций после:37
+```
+
+#### Тесты Sprint 7
+
+```bash
+# Тесты массивов
+pytest tests/arrays/ -v
+
+# Тесты внешних вызовов
+pytest tests/external_calls/ -v
+
+# Тесты оптимизатора
+pytest tests/optimization/ -v
+
+# Все тесты Sprint 7
+pytest tests/arrays/ tests/external_calls/ tests/optimization/ -v
+```
+
+#### Структура новых файлов
+
+```
+src/
+├── ir/
+│   └── optimizer.py            # IROptimizer: folding, propagation, DCE
+├── codegen/
+│   ├── array_generator.py      # ArrayGeneratorMixin: ARRAY_ALLOC/LOAD/STORE/GET_ADDR
+│   ├── external_calls.py       # ExternalCallsMixin: extern, variadic ABI
+│   └── optimization_passes.py  # AsmOptimizer: peephole над NASM-строками
+└── libc/
+    └── stdlib.h                # Справочник сигнатур libc для MiniCompiler
+
+demo/
+└── quicksort.src               # Демо: сортировка массива + extern printf
+
+tests/
+├── arrays/
+│   └── test_arrays.py
+├── external_calls/
+│   └── test_external_calls.py
+└── optimization/
+    └── test_optimization.py
+```
+
 | Функция       | Аргументы       | Описание                                 |
 |:--------------|:----------------|:-----------------------------------------|
 | `_start`      | —               | Точка входа процесса, вызывает `main`    |

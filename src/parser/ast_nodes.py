@@ -95,6 +95,27 @@ class AssignmentExprNode(ExpressionNode):
         return visitor.visit_assignment_expr(self)
 
 
+@dataclass
+class ArrayAccessExprNode(ExpressionNode):
+    """Обращение к элементу массива: arr[index]"""
+    array_name: str = ""
+    index: ExpressionNode = None
+
+    def accept(self, visitor: 'ASTVisitor') -> Any:
+        return visitor.visit_array_access_expr(self)
+
+
+@dataclass
+class ArrayAssignExprNode(ExpressionNode):
+    """Присваивание элементу массива: arr[index] = value"""
+    array_name: str = ""
+    index: ExpressionNode = None
+    value: ExpressionNode = None
+
+    def accept(self, visitor: 'ASTVisitor') -> Any:
+        return visitor.visit_array_assign_expr(self)
+
+
 # ============================================================
 # Инструкции (Statements)
 # ============================================================
@@ -176,6 +197,19 @@ class VarDeclStmtNode(StatementNode):
         return visitor.visit_var_decl_stmt(self)
 
 
+@dataclass
+class ArrayDeclStmtNode(StatementNode):
+    """Объявление массива: int arr[10]; или int arr[3] = {1, 2, 3};"""
+    elem_type: str = ""           # тип элементов: "int", "float", ...
+    name: str = ""
+    size: ExpressionNode = None   # выражение с размером
+    # Список инициализаторов (может быть пустым)
+    initializers: List[ExpressionNode] = field(default_factory=list)
+
+    def accept(self, visitor: 'ASTVisitor') -> Any:
+        return visitor.visit_array_decl_stmt(self)
+
+
 # ============================================================
 # Объявления верхнего уровня (Declarations)
 # ============================================================
@@ -216,6 +250,18 @@ class StructDeclNode(DeclarationNode):
 
     def accept(self, visitor: 'ASTVisitor') -> Any:
         return visitor.visit_struct_decl(self)
+
+
+@dataclass
+class ExternDeclNode(DeclarationNode):
+    """Объявление внешней функции: extern fn name(params) -> return_type;"""
+    name: str = ""
+    param_types: List[str] = field(default_factory=list)  # типы параметров
+    return_type: Optional[str] = None
+    is_variadic: bool = False  # функция с переменным числом аргументов
+
+    def accept(self, visitor: 'ASTVisitor') -> Any:
+        return visitor.visit_extern_decl(self)
 
 
 # ============================================================
@@ -264,6 +310,12 @@ class ASTVisitor:
     def visit_assignment_expr(self, node: AssignmentExprNode) -> Any:
         raise NotImplementedError
 
+    def visit_array_access_expr(self, node: 'ArrayAccessExprNode') -> Any:
+        raise NotImplementedError
+
+    def visit_array_assign_expr(self, node: 'ArrayAssignExprNode') -> Any:
+        raise NotImplementedError
+
     # -- Инструкции --
     def visit_block_stmt(self, node: BlockStmtNode) -> Any:
         raise NotImplementedError
@@ -286,11 +338,17 @@ class ASTVisitor:
     def visit_var_decl_stmt(self, node: VarDeclStmtNode) -> Any:
         raise NotImplementedError
 
+    def visit_array_decl_stmt(self, node: 'ArrayDeclStmtNode') -> Any:
+        raise NotImplementedError
+
     # -- Объявления --
     def visit_function_decl(self, node: FunctionDeclNode) -> Any:
         raise NotImplementedError
 
     def visit_struct_decl(self, node: StructDeclNode) -> Any:
+        raise NotImplementedError
+
+    def visit_extern_decl(self, node: 'ExternDeclNode') -> Any:
         raise NotImplementedError
 
     def visit_param(self, node: ParamNode) -> Any:

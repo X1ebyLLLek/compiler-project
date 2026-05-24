@@ -18,6 +18,9 @@ from .ast_nodes import (
     ForStmtNode, ReturnStmtNode, VarDeclStmtNode,
     FunctionDeclNode, StructDeclNode, ParamNode,
     ExpressionNode, StatementNode,
+    # Sprint 7: новые узлы
+    ArrayDeclStmtNode, ArrayAccessExprNode, ArrayAssignExprNode,
+    ExternDeclNode,
 )
 
 
@@ -150,7 +153,7 @@ class Parser:
     # ================================================================
 
     def _parse_declaration(self) -> Optional[ASTNode]:
-        """Разобрать объявление верхнего уровня (fn, struct или глобальная переменная)."""
+        """Разобрать объявление верхнего уровня (fn, struct, extern или глобальная переменная)."""
         try:
             # Функция
             if self._check(TokenType.KW_FN):
@@ -159,6 +162,10 @@ class Parser:
             # Структура
             if self._check(TokenType.KW_STRUCT):
                 return self._parse_struct_decl()
+
+            # Sprint 7: внешняя функция
+            if self._check(TokenType.KW_EXTERN):
+                return self._parse_extern_decl()
 
             # Объявление переменной (тип + имя) или обычный statement
             return self._parse_statement()
@@ -274,11 +281,11 @@ class Parser:
         if self._check(TokenType.KW_RETURN):
             return self._parse_return_stmt()
 
-        # Попытка: VarDecl (тип + идентификатор)
+        # Попытка: VarDecl (тип + идентификатор, или тип + идентификатор[...] — массив)
         if self._is_type_token():
             return self._parse_var_decl()
 
-        # Иначе — инструкция-выражение
+        # Иначе — инструкция-выражение (может быть arr[i] = ...)
         return self._parse_expr_stmt()
 
     def _is_type_token(self) -> bool:
@@ -377,11 +384,19 @@ class Parser:
         self._consume(TokenType.SEMICOLON, "Ожидалось ';' после return")
         return ReturnStmtNode(line=ret_tok.line, column=ret_tok.column, value=value)
 
-    def _parse_var_decl(self) -> VarDeclStmtNode:
-        """Type IDENTIFIER [= Expression] ;"""
+    def _parse_var_decl(self) -> StatementNode:
+        """
+        Type IDENTIFIER [= Expression] ;
+        или
+        Type IDENTIFIER [ Expression ] [= { Expression, ... }] ;   — массив (Sprint 7)
+        """
         type_name = self._parse_type()
         name_token = self._consume(TokenType.IDENTIFIER,
                                    "Ожидалось имя переменной после типа")
+
+        # Проверяем: если следует '[' — это объявление массива
+        if self._check(TokenType.LBRACKET):
+            return self._parse_array_decl_tail(type_name, name_token)
 
         initializer = None
         if self._match(TokenType.ASSIGN):
@@ -394,6 +409,86 @@ class Parser:
             var_type=type_name,
             name=name_token.lexeme,
             initializer=initializer,
+        )
+
+    def _parse_array_decl_tail(self, elem_type: str, name_token) -> ArrayDeclStmtNode:
+        """
+        Разобрать хвост объявления массива после 'Type IDENT':
+        [ Expression ] [= { expr, expr, ... }] ;
+        """
+        self._consume(TokenType.LBRACKET, "Ожидалось '[' в объявлении массива")
+        size_expr = self._parse_expression()
+        self._consume(TokenType.RBRACKET, "Ожидалось ']' после размера массива")
+
+        # Необязательная инициализация: = { 1, 2, 3 }
+        initializers = []
+        if self._match(TokenType.ASSIGN):
+            self._consume(TokenType.LBRACE, "Ожидалось '{' в инициализаторе массива")
+            if not self._check(TokenType.RBRACE):
+                initializers.append(self._parse_expression())
+                while self._match(TokenType.COMMA):
+                    if self._check(TokenType.RBRACE):
+                        break  # trailing comma допускаем
+                    initializers.append(self._parse_expression())
+            self._consume(TokenType.RBRACE, "Ожидалось '}' в конце инициализатора")
+
+        self._consume(TokenType.SEMICOLON, "Ожидалось ';' после объявления массива")
+
+        return ArrayDeclStmtNode(
+            line=name_token.line, column=name_token.column,
+            elem_type=elem_type,
+            name=name_token.lexeme,
+            size=size_expr,
+            initializers=initializers,
+        )
+
+    def _parse_extern_decl(self) -> ExternDeclNode:
+        """
+        extern fn IDENTIFIER ( [Type, Type, ...] ) [-> Type] ;
+
+        Объявляет внешнюю функцию (из libc или другого объектника).
+        Тела нет — только сигнатура.
+        """
+        ext_tok = self._consume(TokenType.KW_EXTERN, "Ожидалось 'extern'")
+        self._consume(TokenType.KW_FN, "Ожидалось 'fn' после 'extern'")
+        name_token = self._consume(TokenType.IDENTIFIER,
+                                   "Ожидалось имя внешней функции")
+
+        self._consume(TokenType.LPAREN, "Ожидалось '(' после имени функции")
+
+        # Разбираем список типов параметров (без имён — только типы)
+        param_types = []
+        is_variadic = False
+        if not self._check(TokenType.RPAREN):
+            param_types.append(self._parse_type())
+            while self._match(TokenType.COMMA):
+                # Проверяем на variadic: IDENTIFIER "..." (просто игнорируем как знак)
+                if self._check(TokenType.RPAREN):
+                    break
+                # Если встречаем IDENTIFIER с лексемой "..." — конец
+                if (self._peek().type == TokenType.IDENTIFIER
+                        and self._peek().lexeme == "..."):
+                    self._advance()
+                    is_variadic = True
+                    break
+                param_types.append(self._parse_type())
+
+        self._consume(TokenType.RPAREN, "Ожидалось ')' после параметров extern")
+
+        # Необязательный тип возврата
+        return_type = None
+        if self._match(TokenType.MINUS):
+            self._consume(TokenType.GREATER, "Ожидалось '>' (стрелка '->')")
+            return_type = self._parse_type()
+
+        self._consume(TokenType.SEMICOLON, "Ожидалось ';' после extern-объявления")
+
+        return ExternDeclNode(
+            line=ext_tok.line, column=ext_tok.column,
+            name=name_token.lexeme,
+            param_types=param_types,
+            return_type=return_type,
+            is_variadic=is_variadic,
         )
 
     def _parse_expr_stmt(self) -> ExprStmtNode:
@@ -417,6 +512,7 @@ class Parser:
         """
         Assignment ::= LogicalOr { ('=' | '+=' | '-=' | '*=' | '/=') Assignment }
         Правая ассоциативность: рекурсивный вызов самого себя справа.
+        Также поддерживает arr[i] = value (Sprint 7).
         """
         expr = self._parse_logical_or()
 
@@ -427,7 +523,7 @@ class Parser:
             # Правая ассоциативность — рекурсия вправо
             value = self._parse_assignment()
 
-            # Проверяем, что левая часть — идентификатор
+            # Простое присваивание переменной
             if isinstance(expr, IdentifierExprNode):
                 return AssignmentExprNode(
                     line=op_token.line, column=op_token.column,
@@ -435,6 +531,16 @@ class Parser:
                     operator=op_token.lexeme,
                     value=value,
                 )
+
+            # Sprint 7: присваивание элементу массива arr[i] = value
+            if isinstance(expr, ArrayAccessExprNode) and op_token.lexeme == "=":
+                return ArrayAssignExprNode(
+                    line=op_token.line, column=op_token.column,
+                    array_name=expr.array_name,
+                    index=expr.index,
+                    value=value,
+                )
+
             raise self._error(op_token, "Некорректная цель присваивания")
 
         return expr
@@ -561,10 +667,11 @@ class Parser:
                 value=tok.literal_value, literal_type="bool",
             )
 
-        # Идентификатор (может быть вызов функции, если дальше '(')
+        # Идентификатор (вызов функции, доступ к массиву или просто переменная)
         if self._match(TokenType.IDENTIFIER):
             tok = self._previous()
-            # Проверяем вызов функции
+
+            # Вызов функции: IDENT ( args )
             if self._match(TokenType.LPAREN):
                 args = self._parse_arguments()
                 self._consume(TokenType.RPAREN, "Ожидалось ')' после аргументов")
@@ -572,6 +679,18 @@ class Parser:
                     line=tok.line, column=tok.column,
                     callee=tok.lexeme, arguments=args,
                 )
+
+            # Sprint 7: доступ к элементу массива: IDENT [ expr ]
+            if self._check(TokenType.LBRACKET):
+                self._advance()  # съедаем '['
+                index = self._parse_expression()
+                self._consume(TokenType.RBRACKET, "Ожидалось ']' после индекса массива")
+                return ArrayAccessExprNode(
+                    line=tok.line, column=tok.column,
+                    array_name=tok.lexeme,
+                    index=index,
+                )
+
             return IdentifierExprNode(
                 line=tok.line, column=tok.column,
                 name=tok.lexeme,
